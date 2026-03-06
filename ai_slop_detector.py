@@ -1,158 +1,119 @@
 python
 #!/usr/bin/env python3
-"""AI Code Quality Gate - Pre-commit hook to detect AI-generated code slop."""
 import sys
 import re
-import os
-import subprocess
-from pathlib import Path
-from collections import Counter
 import json
+import argparse
+from collections import Counter
+from pathlib import Path
 
-VERSION = "1.0.0"
-
-# Suspicious patterns that indicate AI-generated slop
-GENERIC_VAR_PATTERNS = [
-    r'\b(data|result|temp|tmp|var|value|item|obj|arr|list)\d*\b',
-    r'\b(foo|bar|baz|qux)\b',
-    r'\b(myVar|myFunction|myClass|test\d+)\b'
-]
-
-BOILERPLATE_COMMENTS = [
-    'TODO: implement this',
-    'This function does',
-    'Helper function',
-    'Utility function',
-    'Main function',
-    'Initialize variables',
-    'Process the data',
-    'Return the result'
-]
-
-class CodeQualityGate:
-    def __init__(self, threshold=50):
-        self.threshold = threshold
-        self.issues = []
+class AICodeDetector:
+    def __init__(self):
+        self.ai_phrases = [
+            'helper function', 'utility function', 'TODO: implement',
+            'for future use', 'placeholder', 'magic number',
+            'self-explanatory', 'obvious', 'straightforward'
+        ]
+        self.generic_names = ['temp', 'tmp', 'data', 'result', 'value', 'item', 'obj', 'helper', 'util', 'manager', 'handler']
         
-    def check_generic_variables(self, content, filename):
-        """Detect generic variable names."""
-        score = 0
-        for pattern in GENERIC_VAR_PATTERNS:
-            matches = re.findall(pattern, content, re.IGNORECASE)
-            if matches:
-                score += len(matches) * 5
-                self.issues.append(f"{filename}: Found {len(matches)} generic variable names")
-        return score
-    
-    def check_boilerplate_comments(self, content, filename):
-        """Detect boilerplate comments."""
-        score = 0
-        for comment in BOILERPLATE_COMMENTS:
-            if comment.lower() in content.lower():
-                score += 10
-                self.issues.append(f"{filename}: Boilerplate comment detected: '{comment}'")
-        return score
-    
-    def check_style_consistency(self, content, filename):
-        """Check for inconsistent naming conventions."""
-        score = 0
-        snake_case = len(re.findall(r'\b[a-z]+_[a-z_]+\b', content))
-        camel_case = len(re.findall(r'\b[a-z]+[A-Z][a-zA-Z]+\b', content))
+    def analyze_diff(self, diff_content):
+        lines = diff_content.split('\n')
+        added_lines = [l[1:] for l in lines if l.startswith('+') and not l.startswith('+++')]
         
-        if snake_case > 0 and camel_case > 0:
-            ratio = min(snake_case, camel_case) / max(snake_case, camel_case)
-            if ratio > 0.3:
-                score += 15
-                self.issues.append(f"{filename}: Mixed naming conventions detected")
-        return score
-    
-    def check_comment_density(self, content, filename):
-        """Check for suspiciously high comment-to-code ratio."""
-        lines = content.split('\n')
-        comment_lines = sum(1 for line in lines if line.strip().startswith(('#', '//', '/*', '*')))
-        code_lines = sum(1 for line in lines if line.strip() and not line.strip().startswith(('#', '//', '/*', '*')))
+        if not added_lines:
+            return {'risk_score': 0, 'flags': [], 'lines_analyzed': 0}
         
+        flags = []
+        score = 0
+        
+        # Check for AI phrases
+        phrase_count = sum(1 for line in added_lines for phrase in self.ai_phrases if phrase.lower() in line.lower())
+        if phrase_count > 2:
+            flags.append(f'AI hallmark phrases detected ({phrase_count} instances)')
+            score += min(phrase_count * 5, 25)
+        
+        # Check comment density
+        comment_lines = sum(1 for l in added_lines if l.strip().startswith('#') or l.strip().startswith('//'))
+        code_lines = len([l for l in added_lines if l.strip() and not l.strip().startswith('#') and not l.strip().startswith('//')])
         if code_lines > 0:
-            ratio = comment_lines / code_lines
-            if ratio > 0.5:
-                score = 20
-                self.issues.append(f"{filename}: Excessive comments (ratio: {ratio:.2f})")
-                return score
-        return 0
-    
-    def analyze_file(self, filepath):
-        """Analyze a single file for AI slop indicators."""
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception as e:
-            print(f"Warning: Could not read {filepath}: {e}", file=sys.stderr)
-            return 0
+            comment_ratio = comment_lines / code_lines
+            if comment_ratio > 0.4:
+                flags.append(f'Excessive commenting: {comment_ratio:.1%} comment-to-code ratio')
+                score += 20
         
-        score = 0
-        score += self.check_generic_variables(content, filepath)
-        score += self.check_boilerplate_comments(content, filepath)
-        score += self.check_style_consistency(content, filepath)
-        score += self.check_comment_density(content, filepath)
+        # Check for generic variable names
+        words = re.findall(r'\b[a-z_][a-z0-9_]*\b', ' '.join(added_lines).lower())
+        generic_count = sum(1 for w in words if w in self.generic_names)
+        if generic_count > 5:
+            flags.append(f'Generic variable names detected ({generic_count} instances)')
+            score += 15
         
-        return score
-    
-    def analyze_files(self, filepaths):
-        """Analyze multiple files."""
-        total_score = 0
-        for filepath in filepaths:
-            if os.path.exists(filepath):
-                score = self.analyze_file(filepath)
-                total_score += score
-        return total_score
-    
-    def run(self, filepaths):
-        """Run the quality gate check."""
-        total_score = self.analyze_files(filepaths)
+        # Check for repetitive patterns
+        line_counter = Counter(l.strip() for l in added_lines if len(l.strip()) > 10)
+        repetitive = [line for line, count in line_counter.items() if count > 2]
+        if repetitive:
+            flags.append(f'Repetitive code patterns ({len(repetitive)} unique lines repeated)')
+            score += 20
         
-        if total_score >= self.threshold:
-            print(f"\n❌ Code Quality Gate FAILED (score: {total_score}/{self.threshold})")
-            print("\nIssues found:")
-            for issue in self.issues:
-                print(f"  - {issue}")
-            return 1
-        else:
-            print(f"✅ Code Quality Gate PASSED (score: {total_score}/{self.threshold})")
-            return 0
-
-def get_staged_files():
-    """Get list of staged Python files."""
-    try:
-        result = subprocess.run(
-            ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        files = result.stdout.strip().split('\n')
-        return [f for f in files if f.endswith('.py') and os.path.exists(f)]
-    except subprocess.CalledProcessError:
-        return []
+        # Check for overly long lines
+        long_lines = sum(1 for l in added_lines if len(l) > 120)
+        if long_lines > len(added_lines) * 0.3:
+            flags.append(f'Many overly long lines ({long_lines}/{len(added_lines)})')
+            score += 10
+        
+        # Check for try-except-pass pattern
+        content = '\n'.join(added_lines)
+        if re.search(r'try:.*?except.*?pass', content, re.DOTALL):
+            flags.append('Empty exception handling detected')
+            score += 15
+        
+        return {
+            'risk_score': min(score, 100),
+            'flags': flags,
+            'lines_analyzed': len(added_lines)
+        }
 
 def main():
-    """Main entry point."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='AI Code Quality Gate')
-    parser.add_argument('files', nargs='*', help='Files to check')
-    parser.add_argument('--threshold', type=int, default=50, help='Quality threshold')
-    parser.add_argument('--version', action='version', version=f'%(prog)s {VERSION}')
+    parser = argparse.ArgumentParser(description='AI Code Quality Gate - Detect AI-generated code slop')
+    parser.add_argument('diff_file', nargs='?', help='Path to diff file (or stdin)')
+    parser.add_argument('--json', action='store_true', help='Output JSON format')
+    parser.add_argument('--threshold', type=int, default=50, help='Risk score threshold (default: 50)')
     
     args = parser.parse_args()
     
-    files = args.files if args.files else get_staged_files()
+    # Read diff content
+    if args.diff_file:
+        with open(args.diff_file, 'r') as f:
+            diff_content = f.read()
+    else:
+        diff_content = sys.stdin.read()
     
-    if not files:
-        print("No Python files to check")
-        return 0
+    # Analyze
+    detector = AICodeDetector()
+    result = detector.analyze_diff(diff_content)
     
-    gate = CodeQualityGate(threshold=args.threshold)
-    return gate.run(files)
+    # Output
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"AI Code Quality Gate Analysis")
+        print(f"{'='*50}")
+        print(f"Lines analyzed: {result['lines_analyzed']}")
+        print(f"Risk score: {result['risk_score']}/100")
+        print(f"\nFlags detected:")
+        if result['flags']:
+            for flag in result['flags']:
+                print(f"  - {flag}")
+        else:
+            print("  None")
+        
+        print(f"\n{'='*50}")
+        if result['risk_score'] >= args.threshold:
+            print(f"❌ FAILED: Risk score {result['risk_score']} exceeds threshold {args.threshold}")
+            sys.exit(1)
+        else:
+            print(f"✅ PASSED: Risk score {result['risk_score']} below threshold {args.threshold}")
+            sys.exit(0)
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
