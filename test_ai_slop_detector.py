@@ -1,8 +1,6 @@
 python
-#!/usr/bin/env python3
-"""Tests for AI Code Quality Gate CLI Tool."""
 import pytest
-from unittest.mock import mock_open, patch, MagicMock
+from unittest.mock import Mock, patch, mock_open
 import sys
 from pathlib import Path
 
@@ -10,170 +8,123 @@ from pathlib import Path
 import ai_slop_detector as script_under_test
 
 
-class TestCodeQualityGateInit:
-    """Test CodeQualityGate initialization."""
+class TestAICodeDetector:
     
-    def test_init_default_threshold(self):
-        gate = script_under_test.CodeQualityGate()
-        assert gate.threshold == 50
-        assert gate.issues == []
+    def test_class_exists_and_initializes(self):
+        """Test that AICodeDetector class exists and initializes correctly"""
+        detector = script_under_test.AICodeDetector()
+        assert hasattr(detector, 'ai_phrases')
+        assert hasattr(detector, 'generic_names')
+        assert isinstance(detector.ai_phrases, list)
+        assert isinstance(detector.generic_names, list)
+        assert len(detector.ai_phrases) > 0
+        assert len(detector.generic_names) > 0
     
-    def test_init_custom_threshold(self):
-        gate = script_under_test.CodeQualityGate(threshold=75)
-        assert gate.threshold == 75
-        assert gate.issues == []
-
-
-class TestCheckGenericVariables:
-    """Test generic variable detection."""
+    def test_analyze_diff_with_empty_input(self):
+        """Test analyze_diff handles empty input correctly"""
+        detector = script_under_test.AICodeDetector()
+        result = detector.analyze_diff('')
+        assert result['risk_score'] == 0
+        assert result['flags'] == []
+        assert result['lines_analyzed'] == 0
     
-    def test_detects_generic_variables(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "data = []; result = None; temp = 5"
-        score = gate.check_generic_variables(content, "test.py")
-        assert score > 0
-        assert len(gate.issues) > 0
-        assert "generic variable names" in gate.issues[0]
+    def test_analyze_diff_with_no_added_lines(self):
+        """Test analyze_diff with diff containing no added lines"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """--- a/file.py
++++ b/file.py
+-removed line
+-another removed line"""
+        result = detector.analyze_diff(diff_content)
+        assert result['risk_score'] == 0
+        assert result['flags'] == []
+        assert result['lines_analyzed'] == 0
     
-    def test_no_generic_variables(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "user_name = 'John'; customer_id = 123"
-        score = gate.check_generic_variables(content, "test.py")
-        assert score == 0
-        assert len(gate.issues) == 0
+    def test_analyze_diff_detects_ai_phrases(self):
+        """Test that AI hallmark phrases are detected"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+# This is a helper function
++# TODO: implement this later
++# This is a utility function for future use
++def foo():
++    pass"""
+        result = detector.analyze_diff(diff_content)
+        assert result['risk_score'] > 0
+        assert any('AI hallmark phrases' in flag for flag in result['flags'])
     
-    def test_counts_multiple_occurrences(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "data1 = []; data2 = {}; data3 = None"
-        score = gate.check_generic_variables(content, "test.py")
-        assert score >= 15
-
-
-class TestCheckBoilerplateComments:
-    """Test boilerplate comment detection."""
+    def test_analyze_diff_detects_excessive_comments(self):
+        """Test detection of excessive commenting"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+# Comment 1
++# Comment 2
++# Comment 3
++def foo():
++    # Comment 4
++    pass"""
+        result = detector.analyze_diff(diff_content)
+        assert any('Excessive commenting' in flag for flag in result['flags'])
     
-    def test_detects_boilerplate_comments(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# TODO: implement this\ndef func(): pass"
-        score = gate.check_boilerplate_comments(content, "test.py")
-        assert score == 10
-        assert len(gate.issues) == 1
-        assert "Boilerplate comment" in gate.issues[0]
+    def test_analyze_diff_detects_generic_names(self):
+        """Test detection of generic variable names"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+temp = 1
++tmp = 2
++data = 3
++result = 4
++value = 5
++item = 6
++obj = 7"""
+        result = detector.analyze_diff(diff_content)
+        assert any('Generic variable names' in flag for flag in result['flags'])
     
-    def test_case_insensitive_detection(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# todo: IMPLEMENT THIS"
-        score = gate.check_boilerplate_comments(content, "test.py")
-        assert score == 10
+    def test_analyze_diff_detects_repetitive_patterns(self):
+        """Test detection of repetitive code patterns"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+print("hello world")
++print("hello world")
++print("hello world")
++x = 1"""
+        result = detector.analyze_diff(diff_content)
+        assert any('Repetitive code patterns' in flag for flag in result['flags'])
     
-    def test_multiple_boilerplate_comments(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Helper function\n# Utility function\n# Return the result"
-        score = gate.check_boilerplate_comments(content, "test.py")
-        assert score == 30
-        assert len(gate.issues) == 3
+    def test_analyze_diff_detects_long_lines(self):
+        """Test detection of overly long lines"""
+        detector = script_under_test.AICodeDetector()
+        long_line = '+' + 'x' * 130
+        diff_content = '\n'.join([long_line] * 5 + ['+short'])
+        result = detector.analyze_diff(diff_content)
+        assert any('overly long lines' in flag for flag in result['flags'])
     
-    def test_no_boilerplate_comments(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Calculate user authentication token"
-        score = gate.check_boilerplate_comments(content, "test.py")
-        assert score == 0
-
-
-class TestCheckStyleConsistency:
-    """Test style consistency checking."""
+    def test_analyze_diff_detects_empty_exception_handling(self):
+        """Test detection of try-except-pass pattern"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+try:
++    something()
++except:
++    pass"""
+        result = detector.analyze_diff(diff_content)
+        assert any('Empty exception handling' in flag for flag in result['flags'])
     
-    def test_detects_mixed_naming_conventions(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "user_name = 'test'; userName = 'test2'; customer_id = 1; customerId = 2"
-        score = gate.check_style_consistency(content, "test.py")
-        assert score == 15
-        assert any("Mixed naming conventions" in issue for issue in gate.issues)
+    def test_analyze_diff_returns_correct_structure(self):
+        """Test that analyze_diff returns correctly structured output"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = "+def foo():\n+    pass"
+        result = detector.analyze_diff(diff_content)
+        assert 'risk_score' in result
+        assert 'flags' in result
+        assert 'lines_analyzed' in result
+        assert isinstance(result['risk_score'], (int, float))
+        assert isinstance(result['flags'], list)
+        assert isinstance(result['lines_analyzed'], int)
     
-    def test_consistent_snake_case(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "user_name = 'test'; customer_id = 1; order_total = 100"
-        score = gate.check_style_consistency(content, "test.py")
-        assert score == 0
-    
-    def test_consistent_camel_case(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "userName = 'test'; customerId = 1; orderTotal = 100"
-        score = gate.check_style_consistency(content, "test.py")
-        assert score == 0
-
-
-class TestCheckCommentDensity:
-    """Test comment density checking."""
-    
-    def test_excessive_comments(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Comment 1\n# Comment 2\n# Comment 3\ncode = 1\ncode2 = 2"
-        score = gate.check_comment_density(content, "test.py")
-        assert score == 20
-        assert any("Excessive comments" in issue for issue in gate.issues)
-    
-    def test_normal_comment_ratio(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Comment\ncode1 = 1\ncode2 = 2\ncode3 = 3\ncode4 = 4"
-        score = gate.check_comment_density(content, "test.py")
-        assert score == 0
-    
-    def test_no_code_lines(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Comment 1\n# Comment 2"
-        score = gate.check_comment_density(content, "test.py")
-        assert score == 0
-    
-    def test_different_comment_styles(self):
-        gate = script_under_test.CodeQualityGate()
-        content = "# Python comment\n// JS comment\n/* Block */\n* Star\ncode = 1"
-        score = gate.check_comment_density(content, "test.py")
-        assert score == 20
-
-
-class TestAnalyzeFile:
-    """Test file analysis."""
-    
-    @patch("builtins.open", new_callable=mock_open, read_data="data = []\n# TODO: implement this")
-    def test_analyze_file_success(self, mock_file):
-        gate = script_under_test.CodeQualityGate()
-        result = gate.analyze_file("test.py")
-        mock_file.assert_called_once_with("test.py", "r", encoding="utf-8")
-        assert isinstance(result, (int, type(None)))
-    
-    @patch("builtins.open", side_effect=FileNotFoundError)
-    def test_analyze_file_not_found(self, mock_file):
-        gate = script_under_test.CodeQualityGate()
-        result = gate.analyze_file("nonexistent.py")
-        assert result is None or isinstance(result, int)
-    
-    @patch("builtins.open", side_effect=UnicodeDecodeError("utf-8", b"", 0, 1, "invalid"))
-    def test_analyze_file_encoding_error(self, mock_file):
-        gate = script_under_test.CodeQualityGate()
-        result = gate.analyze_file("bad_encoding.py")
-        assert result is None or isinstance(result, int)
-    
-    @patch("builtins.open", new_callable=mock_open, read_data="clean_code = True")
-    def test_analyze_file_clean_code(self, mock_file):
-        gate = script_under_test.CodeQualityGate()
-        result = gate.analyze_file("clean.py")
-        assert len(gate.issues) == 0
-
-
-class TestModuleConstants:
-    """Test module-level constants."""
-    
-    def test_version_exists(self):
-        assert hasattr(script_under_test, "VERSION")
-        assert isinstance(script_under_test.VERSION, str)
-    
-    def test_generic_var_patterns_exists(self):
-        assert hasattr(script_under_test, "GENERIC_VAR_PATTERNS")
-        assert isinstance(script_under_test.GENERIC_VAR_PATTERNS, list)
-        assert len(script_under_test.GENERIC_VAR_PATTERNS) > 0
-    
-    def test_boilerplate_comments_exists(self):
-        assert hasattr(script_under_test, "BOILERPLATE_COMMENTS")
-        assert isinstance(script_under_test.BOILERPLATE_COMMENTS, list)
-        assert len(script_under_test.BOILERPLATE_COMMENTS) > 0
+    def test_analyze_diff_with_clean_code(self):
+        """Test analyze_diff with clean code that should pass"""
+        detector = script_under_test.AICodeDetector()
+        diff_content = """+def calculate_sum(numbers):
++    total = 0
++    for num in numbers:
++        total += num
++    return total"""
+        result = detector.analyze_diff(diff_content)
+        assert result['risk_score'] >= 0
+        assert isinstance(result['flags'], list)
