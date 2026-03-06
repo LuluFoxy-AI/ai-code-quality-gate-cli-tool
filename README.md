@@ -1,92 +1,79 @@
-# 🛡️ AI Code Quality Gate
+# 🚦 AI Code Quality Gate CLI Tool
 
-**Stop AI-generated code slop from polluting your codebase.**
+**Stop AI Slop Before It Wastes Your Team's Time**
 
-A heuristic-based CLI tool and GitHub Action that detects low-quality AI-generated code patterns in pull requests. Built for teams drowning in generic, context-free contributions that waste precious review time.
+A lightweight pre-commit hook that automatically detects and rejects low-quality AI-generated code contributions. No more drowning in generic variables, boilerplate comments, and inconsistent style.
 
-## 🎯 The Problem
+## The Problem
 
-OSS projects like Godot Engine receive hundreds of AI-generated PRs weekly:
-- Generic variable names (`foo`, `bar`, `temp`, `data`)
-- Hallmark AI phrases in comments ("Here's an implementation...", "Note that this...")
-- Repetitive code patterns with no context
-- Over-explained comments that add no value
-- Missing domain knowledge and project conventions
+AI code assistants are flooding repositories with:
+- Generic variable names (`data`, `result`, `temp`, `myVar`)
+- Boilerplate comments that add zero value
+- Inconsistent naming conventions
+- Copy-paste code with no context
+- Manual review is unsustainable as AI code volume explodes
 
-**Result:** Maintainers spend hours reviewing and rejecting low-effort contributions.
+## The Solution
 
-## ✨ Features
+A single-binary CLI tool that runs before every commit, automatically flagging suspicious patterns and rejecting low-quality contributions.
 
-- **Heuristic Detection Engine**: Identifies AI code patterns without ML overhead
-- **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Java, C/C++
-- **Configurable Thresholds**: Set your own quality gates
-- **CI/CD Ready**: Works as GitHub Action, GitLab CI, or standalone CLI
-- **Zero Dependencies**: Pure Python stdlib (+ requests for GitHub integration)
-- **JSON Output**: Easy integration with existing workflows
-
-## 🚀 Quick Start
+## Installation
 
 ```bash
-# Install
-pip install ai-code-quality-gate
-
-# Analyze files
-ai-quality-gate src/ --threshold 15
-
-# Check specific files
-ai-quality-gate file1.py file2.js --json
-
-# Custom extensions
-ai-quality-gate . --extensions .py,.ts,.go
+curl -sSL https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/install.sh | bash
 ```
 
-## 📊 Detection Heuristics
+Or manual installation:
 
-| Pattern | Score | Description |
-|---------|-------|-------------|
-| AI comment phrases | 10 | "As an AI", "Here's a solution" |
-| Generic variables | 5 | Excessive foo/bar/temp usage |
-| Repetitive code | 8 | Duplicated blocks |
-| Verbose comments | 7 | >40% comment-to-code ratio |
-| Generic functions | 6 | process(), handle(), execute() |
+```bash
+# Download the script
+wget https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-quality-gate.py
 
-**Risk Levels:**
-- `CLEAN`: Score 0
-- `LOW`: Score 1-14
-- `MEDIUM`: Score 15-24
-- `HIGH`: Score 25+
+# Make it executable
+chmod +x ai-quality-gate.py
 
-## 🔧 GitHub Action Usage
-
-```yaml
-name: AI Code Quality Gate
-on: [pull_request]
-
-jobs:
-  quality-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: LuluFoxy-AI/ai-code-quality-gate-action@v1
-        with:
-          threshold: 15
-          paths: 'src/'
+# Install as git hook
+cp ai-quality-gate.py .git/hooks/pre-commit
 ```
 
-## 💰 Pricing
+## Usage
 
-- **OSS Projects**: Free forever
-- **Private Repos**: $29-99/mo per organization
-- **Enterprise Self-Hosted**: $5k-15k/year with SLA
+Once installed, the quality gate runs automatically on every commit:
 
-## 📝 License
+```bash
+git add .
+git commit -m "Add new feature"
+# 🚦 AI Code Quality Gate runs automatically
+```
 
-MIT License - Free for open source projects
+## What It Detects
 
-## 🤝 Contributing
+✅ Generic variable names (data, result, temp, foo, bar)  
+✅ Boilerplate comments ("TODO: implement this", "Helper function")  
+✅ Inconsistent naming conventions (mixed snake_case and camelCase)  
+✅ Excessive comment-to-code ratios  
+✅ Missing context and meaningful identifiers  
 
-Contributions welcome! Please ensure your PR passes the quality gate 😉
+## Configuration
+
+Adjust the slop threshold (default: 50):
+
+```python
+gate = CodeQualityGate(threshold=75)  # More strict
+```
+
+## Supported Languages
+
+Python, JavaScript, TypeScript, Java, Go, Rust
+
+## License
+
+MIT License - Use freely in commercial projects
+
+## Support
+
+Issues: https://github.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/issues
 
 ---
 
-**Built by developers, for developers.** Stop the AI slop. Ship quality code.
+**Stop the slop. Ship quality code.**
