@@ -1,229 +1,208 @@
 python
-#!/usr/bin/env python3
-"""
-Test suite for AI Code Quality Gate CLI Tool
-"""
-
 import pytest
+from unittest.mock import patch, MagicMock
+import subprocess
 import sys
-import json
-from pathlib import Path
-from unittest.mock import Mock, patch, mock_open, MagicMock
-from io import StringIO
+import os
 
-# Import the script under test
-sys.path.insert(0, str(Path(__file__).parent))
+# Import the module under test
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai_code_quality_gate as script_under_test
 
 
-class TestAICodeDetector:
-    """Test suite for AICodeDetector class"""
+class TestGetGitDiff:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'get_git_diff')
+        assert callable(script_under_test.get_git_diff)
+    
+    @patch('subprocess.run')
+    def test_successful_git_diff(self, mock_run):
+        mock_run.return_value = MagicMock(stdout='+ some diff content\n- old content')
+        result = script_under_test.get_git_diff('main')
+        assert result == '+ some diff content\n- old content'
+        mock_run.assert_called_once_with(
+            ['git', 'diff', 'main...HEAD'],
+            capture_output=True, text=True, check=True
+        )
+    
+    @patch('subprocess.run')
+    def test_git_diff_with_custom_branch(self, mock_run):
+        mock_run.return_value = MagicMock(stdout='diff content')
+        script_under_test.get_git_diff('develop')
+        mock_run.assert_called_once_with(
+            ['git', 'diff', 'develop...HEAD'],
+            capture_output=True, text=True, check=True
+        )
+    
+    @patch('subprocess.run')
+    def test_git_diff_error_handling(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, 'git')
+        result = script_under_test.get_git_diff('main')
+        assert result == ''
 
-    def test_detector_initialization(self):
-        """Test that AICodeDetector initializes with empty issues and zero score"""
-        detector = script_under_test.AICodeDetector()
-        assert detector.issues == []
-        assert detector.score == 0
 
-    def test_analyze_file_with_ai_comment_phrases(self):
-        """Test detection of AI-generated comment phrases"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        # As an AI, I recommend this approach
-        def example():
+class TestAnalyzeVariableNames:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'analyze_variable_names')
+        assert callable(script_under_test.analyze_variable_names)
+    
+    def test_no_generic_variables(self):
+        diff = '+    meaningful_name = 5\n+    user_account = get_user()'
+        result = script_under_test.analyze_variable_names(diff)
+        assert result == 0.0
+    
+    def test_all_generic_variables(self):
+        diff = '+    temp = 5\n+    data = get_data()\n+    result = process()'
+        result = script_under_test.analyze_variable_names(diff)
+        assert result == 100.0
+    
+    def test_mixed_variables(self):
+        diff = '+    temp = 5\n+    meaningful_name = 10'
+        result = script_under_test.analyze_variable_names(diff)
+        assert result == 50.0
+    
+    def test_empty_diff(self):
+        result = script_under_test.analyze_variable_names('')
+        assert result == 0.0
+    
+    def test_ignores_non_added_lines(self):
+        diff = '-    temp = 5\n     unchanged = 10\n+    good_name = 20'
+        result = script_under_test.analyze_variable_names(diff)
+        assert result == 0.0
+
+
+class TestAnalyzeRepetitivePatterns:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'analyze_repetitive_patterns')
+        assert callable(script_under_test.analyze_repetitive_patterns)
+    
+    def test_no_repetition(self):
+        diff = '+    line1 = unique_code_here\n+    line2 = different_code\n+    line3 = more_unique\n+    line4 = another_one\n+    line5 = last_one'
+        result = script_under_test.analyze_repetitive_patterns(diff)
+        assert result == 0.0
+    
+    def test_high_repetition(self):
+        diff = '+    repeated_line\n' * 10
+        result = script_under_test.analyze_repetitive_patterns(diff)
+        assert result > 0.0
+    
+    def test_few_lines_returns_zero(self):
+        diff = '+    line1\n+    line2'
+        result = script_under_test.analyze_repetitive_patterns(diff)
+        assert result == 0.0
+    
+    def test_caps_at_100(self):
+        diff = '+    same_line_repeated\n' * 100
+        result = script_under_test.analyze_repetitive_patterns(diff)
+        assert result == 100.0
+
+
+class TestAnalyzeCommentQuality:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'analyze_comment_quality')
+        assert callable(script_under_test.analyze_comment_quality)
+    
+    def test_no_comments(self):
+        diff = '+    code = 5\n+    more_code = 10'
+        result = script_under_test.analyze_comment_quality(diff)
+        assert result == 0.0
+    
+    def test_generic_comments(self):
+        diff = '+# This function does something\n+# This method returns the value'
+        result = script_under_test.analyze_comment_quality(diff)
+        assert result == 100.0
+    
+    def test_good_comments(self):
+        diff = '+# Calculate fibonacci sequence using dynamic programming\n+# Validate user input against security constraints'
+        result = script_under_test.analyze_comment_quality(diff)
+        assert result == 0.0
+    
+    def test_mixed_comments(self):
+        diff = '+# This function processes data\n+# Implements binary search algorithm'
+        result = script_under_test.analyze_comment_quality(diff)
+        assert result == 75.0
+
+
+class TestAnalyzeCodeStructure:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'analyze_code_structure')
+        assert callable(script_under_test.analyze_code_structure)
+    
+    def test_good_structure(self):
+        diff = '+def func():\n+    return 5'
+        result = script_under_test.analyze_code_structure(diff)
+        assert result == 0.0
+    
+    def test_deep_nesting(self):
+        diff = '+                    deeply_nested = True'
+        result = script_under_test.analyze_code_structure(diff)
+        assert result > 0.0
+    
+    def test_long_lines(self):
+        diff = '+' + 'x' * 130
+        result = script_under_test.analyze_code_structure(diff)
+        assert result == 100.0
+    
+    def test_empty_diff(self):
+        result = script_under_test.analyze_code_structure('')
+        assert result == 0.0
+
+
+class TestCalculateRiskScore:
+    def test_function_exists(self):
+        assert hasattr(script_under_test, 'calculate_risk_score')
+        assert callable(script_under_test.calculate_risk_score)
+    
+    def test_low_risk(self):
+        metrics = {'generic_vars': 10, 'repetition': 10, 'comments': 10, 'structure': 10}
+        score, severity = script_under_test.calculate_risk_score(metrics)
+        assert severity == 'LOW'
+        assert score < 40
+    
+    def test_medium_risk(self):
+        metrics = {'generic_vars': 50, 'repetition': 50, 'comments': 50, 'structure': 50}
+        score, severity = script_under_test.calculate_risk_score(metrics)
+        assert severity == 'MEDIUM'
+        assert 40 <= score < 70
+    
+    def test_high_risk(self):
+        metrics = {'generic_vars': 100, 'repetition': 100, 'comments': 100, 'structure': 100}
+        score, severity = script_under_test.calculate_risk_score(metrics)
+        assert severity == 'HIGH'
+        assert score >= 70
+    
+    def test_weighted_calculation(self):
+        metrics = {'generic_vars': 100, 'repetition': 0, 'comments': 0, 'structure': 0}
+        score, severity = script_under_test.calculate_risk_score(metrics)
+        assert score == 30
+        assert severity == 'LOW'
+    
+    def test_returns_tuple(self):
+        metrics = {'generic_vars': 50, 'repetition': 50, 'comments': 50, 'structure': 50}
+        result = script_under_test.calculate_risk_score(metrics)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], int)
+        assert isinstance(result[1], str)
+
+
+class TestMain:
+    @patch('ai_code_quality_gate.get_git_diff')
+    @patch('sys.argv', ['script.py'])
+    def test_main_default_branch(self, mock_get_diff):
+        mock_get_diff.return_value = ''
+        try:
+            script_under_test.main()
+        except (SystemExit, AttributeError):
             pass
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('test.py'))
-            
-        assert 'file' not in result or result.get('error') is None
-        assert any('AI phrase detected' in issue for issue in result.get('issues', []) if isinstance(issue, str))
-
-    def test_analyze_file_with_generic_variables(self):
-        """Test detection of excessive generic variable names"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        def process():
-            foo = 1
-            bar = 2
-            baz = 3
-            temp = 4
-            tmp = 5
-            data = 6
-            item = 7
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('test.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_repetitive_code(self):
-        """Test detection of repetitive code patterns"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        def example():
-            print("This is a very long line of code that repeats")
-            print("This is a very long line of code that repeats")
-            print("This is a very long line of code that repeats")
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('test.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_excessive_comments(self):
-        """Test detection of excessive comments ratio"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        # Comment 1
-        # Comment 2
-        # Comment 3
-        # Comment 4
-        # Comment 5
-        def func():
-            # Comment 6
+        mock_get_diff.assert_called_once_with('main')
+    
+    @patch('ai_code_quality_gate.get_git_diff')
+    @patch('sys.argv', ['script.py', 'develop'])
+    def test_main_custom_branch(self, mock_get_diff):
+        mock_get_diff.return_value = ''
+        try:
+            script_under_test.main()
+        except (SystemExit, AttributeError):
             pass
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('test.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_handles_read_error(self):
-        """Test that file read errors are handled gracefully"""
-        detector = script_under_test.AICodeDetector()
-        
-        with patch.object(Path, 'read_text', side_effect=IOError('File not found')):
-            result = detector.analyze_file(Path('nonexistent.py'))
-            
-        assert 'error' in result
-        assert 'File not found' in result['error']
-        assert 'file' in result
-
-    def test_analyze_file_with_clean_code(self):
-        """Test that clean code produces minimal issues"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        def calculate_total(prices):
-            total_amount = 0
-            for price in prices:
-                total_amount += price
-            return total_amount
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('clean.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_empty_content(self):
-        """Test analysis of empty file"""
-        detector = script_under_test.AICodeDetector()
-        
-        with patch.object(Path, 'read_text', return_value=''):
-            result = detector.analyze_file(Path('empty.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_unicode_content(self):
-        """Test that unicode content is handled correctly"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        # Unicode test: café, naïve, 日本語
-        def process_unicode():
-            text = "Hello 世界"
-            return text
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('unicode.py'))
-            
-        assert isinstance(result, dict)
-
-
-class TestAICommentPatterns:
-    """Test suite for AI comment phrase detection patterns"""
-
-    def test_ai_comment_phrases_exist(self):
-        """Test that AI_COMMENT_PHRASES is defined and non-empty"""
-        assert hasattr(script_under_test, 'AI_COMMENT_PHRASES')
-        assert len(script_under_test.AI_COMMENT_PHRASES) > 0
-        assert all(isinstance(pattern, str) for pattern in script_under_test.AI_COMMENT_PHRASES)
-
-    def test_generic_var_pattern_exists(self):
-        """Test that GENERIC_VAR_PATTERN is defined"""
-        assert hasattr(script_under_test, 'GENERIC_VAR_PATTERN')
-        assert isinstance(script_under_test.GENERIC_VAR_PATTERN, str)
-
-    def test_repetitive_threshold_exists(self):
-        """Test that REPETITIVE_THRESHOLD is defined and reasonable"""
-        assert hasattr(script_under_test, 'REPETITIVE_THRESHOLD')
-        assert isinstance(script_under_test.REPETITIVE_THRESHOLD, int)
-        assert script_under_test.REPETITIVE_THRESHOLD > 0
-
-
-class TestModuleStructure:
-    """Test suite for module-level structure and imports"""
-
-    def test_module_has_docstring(self):
-        """Test that module has a docstring"""
-        assert script_under_test.__doc__ is not None
-        assert len(script_under_test.__doc__.strip()) > 0
-
-    def test_required_imports_present(self):
-        """Test that required modules are imported"""
-        assert hasattr(script_under_test, 're')
-        assert hasattr(script_under_test, 'sys')
-        assert hasattr(script_under_test, 'json')
-        assert hasattr(script_under_test, 'Path')
-
-    def test_aicode_detector_class_exists(self):
-        """Test that AICodeDetector class is defined"""
-        assert hasattr(script_under_test, 'AICodeDetector')
-        assert callable(script_under_test.AICodeDetector)
-
-
-class TestEdgeCases:
-    """Test suite for edge cases and boundary conditions"""
-
-    def test_analyze_file_with_only_comments(self):
-        """Test file containing only comments"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = """
-        # Comment 1
-        # Comment 2
-        # Comment 3
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('comments_only.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_very_long_lines(self):
-        """Test file with very long lines"""
-        detector = script_under_test.AICodeDetector()
-        long_line = "x = " + "1 + " * 1000 + "1"
-        mock_content = f"""
-        def func():
-            {long_line}
-        """
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('long_lines.py'))
-            
-        assert isinstance(result, dict)
-
-    def test_analyze_file_with_mixed_line_endings(self):
-        """Test file with mixed line endings"""
-        detector = script_under_test.AICodeDetector()
-        mock_content = "line1\nline2\r\nline3\rline4"
-        
-        with patch.object(Path, 'read_text', return_value=mock_content):
-            result = detector.analyze_file(Path('mixed_endings.py'))
-            
-        assert isinstance(result, dict)
+        mock_get_diff.assert_called_once_with('develop')
