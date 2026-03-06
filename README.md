@@ -1,79 +1,74 @@
-# 🚦 AI Code Quality Gate CLI Tool
+# AI Code Quality Gate CLI Tool
 
-**Stop AI Slop Before It Wastes Your Team's Time**
+**Stop AI-generated code slop before it pollutes your codebase.**
 
-A lightweight pre-commit hook that automatically detects and rejects low-quality AI-generated code contributions. No more drowning in generic variables, boilerplate comments, and inconsistent style.
+A lightweight CLI tool that analyzes PR diffs for telltale signs of AI-generated code: repetitive patterns, generic variable names, excessive commenting, and hallmark AI phrases.
 
 ## The Problem
 
-AI code assistants are flooding repositories with:
-- Generic variable names (`data`, `result`, `temp`, `myVar`)
-- Boilerplate comments that add zero value
-- Inconsistent naming conventions
-- Copy-paste code with no context
-- Manual review is unsustainable as AI code volume explodes
+- Teams waste hours reviewing low-quality AI-generated PRs
+- AI code often passes linting but fails human quality standards
+- No automated way to flag suspicious AI contributions before review
+- Companies spend millions on "AI transformation" that delivers chatbot wrappers
 
-## The Solution
+## Features
 
-A single-binary CLI tool that runs before every commit, automatically flagging suspicious patterns and rejecting low-quality contributions.
+✅ Detects AI hallmark phrases ("helper function", "for future use", etc.)
+✅ Flags excessive commenting (AI loves to over-explain)
+✅ Identifies generic variable names (temp, data, result, handler)
+✅ Catches repetitive code patterns
+✅ Analyzes comment-to-code ratios
+✅ GitHub Action ready
+✅ Zero dependencies (stdlib only)
 
 ## Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/install.sh | bash
-```
-
-Or manual installation:
-
-```bash
-# Download the script
-wget https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-quality-gate.py
-
-# Make it executable
-chmod +x ai-quality-gate.py
-
-# Install as git hook
-cp ai-quality-gate.py .git/hooks/pre-commit
+curl -o ai-gate.py https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-gate.py
+chmod +x ai-gate.py
 ```
 
 ## Usage
 
-Once installed, the quality gate runs automatically on every commit:
-
 ```bash
-git add .
-git commit -m "Add new feature"
-# 🚦 AI Code Quality Gate runs automatically
+# Analyze a diff file
+git diff main | python3 ai-gate.py
+
+# With custom threshold
+git diff main | python3 ai-gate.py --threshold 60
+
+# JSON output for CI/CD
+git diff main | python3 ai-gate.py --json
 ```
 
-## What It Detects
+## GitHub Action
 
-✅ Generic variable names (data, result, temp, foo, bar)  
-✅ Boilerplate comments ("TODO: implement this", "Helper function")  
-✅ Inconsistent naming conventions (mixed snake_case and camelCase)  
-✅ Excessive comment-to-code ratios  
-✅ Missing context and meaningful identifiers  
+Add to `.github/workflows/ai-gate.yml`:
 
-## Configuration
-
-Adjust the slop threshold (default: 50):
-
-```python
-gate = CodeQualityGate(threshold=75)  # More strict
+```yaml
+name: AI Code Quality Gate
+on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          curl -o ai-gate.py https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-gate.py
+          git diff origin/main | python3 ai-gate.py --threshold 50
 ```
 
-## Supported Languages
+## Risk Score Interpretation
 
-Python, JavaScript, TypeScript, Java, Go, Rust
+- **0-30**: Low risk, likely human-written
+- **31-60**: Moderate risk, review carefully
+- **61-100**: High risk, probable AI generation
 
 ## License
 
-MIT License - Use freely in commercial projects
+MIT - Use freely, commercially or otherwise.
 
 ## Support
 
-Issues: https://github.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/issues
-
----
-
-**Stop the slop. Ship quality code.**
+Found a bug? Open an issue on GitHub.
+Want premium features? Check out the Pro version with ML-based detection.
