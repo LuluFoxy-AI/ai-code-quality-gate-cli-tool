@@ -1,262 +1,179 @@
 python
 #!/usr/bin/env python3
-"""
-Test suite for AI Code Quality Gate CLI Tool
-Tests the AICodeQualityGate class and its detection methods.
-"""
-
+"""Tests for AI Code Quality Gate CLI Tool."""
 import pytest
+from unittest.mock import mock_open, patch, MagicMock
 import sys
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
-from io import StringIO
 
-# Import the script under test
-sys.path.insert(0, str(Path(__file__).parent))
+# Import the module under test
 import ai_slop_detector as script_under_test
 
 
-class TestAICodeQualityGateInit:
-    """Test initialization of AICodeQualityGate class."""
+class TestCodeQualityGateInit:
+    """Test CodeQualityGate initialization."""
     
-    def test_class_exists_and_instantiable(self):
-        """Test that AICodeQualityGate class can be instantiated."""
-        gate = script_under_test.AICodeQualityGate()
-        assert gate is not None
-        assert isinstance(gate, script_under_test.AICodeQualityGate)
-    
-    def test_initial_state(self):
-        """Test that instance initializes with correct default values."""
-        gate = script_under_test.AICodeQualityGate()
+    def test_init_default_threshold(self):
+        gate = script_under_test.CodeQualityGate()
+        assert gate.threshold == 50
         assert gate.issues == []
-        assert gate.files_scanned == 0
+    
+    def test_init_custom_threshold(self):
+        gate = script_under_test.CodeQualityGate(threshold=75)
+        assert gate.threshold == 75
+        assert gate.issues == []
 
 
-class TestCheckBrokenImports:
-    """Test detection of broken/suspicious imports."""
+class TestCheckGenericVariables:
+    """Test generic variable detection."""
     
-    def test_detects_suspicious_generic_imports(self):
-        """Test detection of common fake module imports."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """import utils
-from helpers import something
-import common
-"""
-        issues = gate.check_broken_imports(content, "test.py")
-        assert len(issues) >= 3
-        assert all(issue['type'] == 'broken_import' for issue in issues)
-        assert all('test.py' == issue['file'] for issue in issues)
+    def test_detects_generic_variables(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "data = []; result = None; temp = 5"
+        score = gate.check_generic_variables(content, "test.py")
+        assert score > 0
+        assert len(gate.issues) > 0
+        assert "generic variable names" in gate.issues[0]
     
-    def test_ignores_relative_imports(self):
-        """Test that relative imports are not flagged."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """from .utils import helper
-from . import common
-"""
-        issues = gate.check_broken_imports(content, "test.py")
-        assert len(issues) == 0
+    def test_no_generic_variables(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "user_name = 'John'; customer_id = 123"
+        score = gate.check_generic_variables(content, "test.py")
+        assert score == 0
+        assert len(gate.issues) == 0
     
-    def test_ignores_legitimate_imports(self):
-        """Test that standard library imports are not flagged."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """import os
-import sys
-from pathlib import Path
-"""
-        issues = gate.check_broken_imports(content, "test.py")
-        assert len(issues) == 0
-    
-    def test_reports_correct_line_numbers(self):
-        """Test that line numbers are correctly reported."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """# Comment
-import os
-import utils
-from helpers import x
-"""
-        issues = gate.check_broken_imports(content, "test.py")
-        line_numbers = [issue['line'] for issue in issues]
-        assert 3 in line_numbers
-        assert 4 in line_numbers
-        assert 2 not in line_numbers
-    
-    def test_empty_content(self):
-        """Test handling of empty file content."""
-        gate = script_under_test.AICodeQualityGate()
-        issues = gate.check_broken_imports("", "test.py")
-        assert issues == []
-    
-    def test_no_imports(self):
-        """Test file with no imports."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """def foo():
-    return 42
-"""
-        issues = gate.check_broken_imports(content, "test.py")
-        assert issues == []
+    def test_counts_multiple_occurrences(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "data1 = []; data2 = {}; data3 = None"
+        score = gate.check_generic_variables(content, "test.py")
+        assert score >= 15
 
 
-class TestCheckRedundantComments:
-    """Test detection of redundant AI-style comments."""
+class TestCheckBoilerplateComments:
+    """Test boilerplate comment detection."""
     
-    def test_detects_initialize_comments(self):
-        """Test detection of 'initialize' style comments."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """# Initialize the counter
-counter = 0
-# Initialize variable x
-x = 10
-"""
-        issues = gate.check_redundant_comments(content, "test.py")
-        assert len(issues) >= 2
-        assert all(issue['type'] == 'redundant_comment' for issue in issues)
+    def test_detects_boilerplate_comments(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# TODO: implement this\ndef func(): pass"
+        score = gate.check_boilerplate_comments(content, "test.py")
+        assert score == 10
+        assert len(gate.issues) == 1
+        assert "Boilerplate comment" in gate.issues[0]
     
-    def test_detects_create_define_setup_comments(self):
-        """Test detection of various redundant comment patterns."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """# Create a list
-my_list = []
-# Define a function
-def foo(): pass
-# Set up the configuration
-config = {}
-"""
-        issues = gate.check_redundant_comments(content, "test.py")
-        assert len(issues) >= 3
+    def test_case_insensitive_detection(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# todo: IMPLEMENT THIS"
+        score = gate.check_boilerplate_comments(content, "test.py")
+        assert score == 10
     
-    def test_ignores_meaningful_comments(self):
-        """Test that meaningful comments are not flagged."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """# TODO: Refactor this later
-x = 10
-# This is a workaround for bug #123
-y = 20
-"""
-        issues = gate.check_redundant_comments(content, "test.py")
-        assert len(issues) == 0
+    def test_multiple_boilerplate_comments(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Helper function\n# Utility function\n# Return the result"
+        score = gate.check_boilerplate_comments(content, "test.py")
+        assert score == 30
+        assert len(gate.issues) == 3
     
-    def test_correct_line_numbers_for_comments(self):
-        """Test that comment line numbers are correctly reported."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """x = 1
-# Initialize y
-y = 2
-z = 3
-"""
-        issues = gate.check_redundant_comments(content, "test.py")
-        assert len(issues) == 1
-        assert issues[0]['line'] == 2
-    
-    def test_empty_content_comments(self):
-        """Test handling of empty content for comment checking."""
-        gate = script_under_test.AICodeQualityGate()
-        issues = gate.check_redundant_comments("", "test.py")
-        assert issues == []
-    
-    def test_no_comments(self):
-        """Test file with no comments."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """x = 1
-y = 2
-z = 3
-"""
-        issues = gate.check_redundant_comments(content, "test.py")
-        assert issues == []
+    def test_no_boilerplate_comments(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Calculate user authentication token"
+        score = gate.check_boilerplate_comments(content, "test.py")
+        assert score == 0
 
 
-class TestCheckHallucinatedAPIs:
-    """Test detection of hallucinated API calls."""
+class TestCheckStyleConsistency:
+    """Test style consistency checking."""
     
-    def test_detects_get_all_pattern(self):
-        """Test detection of .get_all() hallucination."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """result = obj.get_all()
-data = service.get_all()
-"""
-        issues = gate.check_hallucinated_apis(content, "test.py")
-        assert len(issues) >= 2
-        assert all(issue['type'] == 'hallucinated_api' for issue in issues)
+    def test_detects_mixed_naming_conventions(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "user_name = 'test'; userName = 'test2'; customer_id = 1; customerId = 2"
+        score = gate.check_style_consistency(content, "test.py")
+        assert score == 15
+        assert any("Mixed naming conventions" in issue for issue in gate.issues)
     
-    def test_detects_fetch_data_pattern(self):
-        """Test detection of .fetch_data() hallucination."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """data = api.fetch_data()
-"""
-        issues = gate.check_hallucinated_apis(content, "test.py")
-        assert len(issues) >= 1
+    def test_consistent_snake_case(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "user_name = 'test'; customer_id = 1; order_total = 100"
+        score = gate.check_style_consistency(content, "test.py")
+        assert score == 0
     
-    def test_detects_multiple_hallucinated_patterns(self):
-        """Test detection of multiple different hallucinated APIs."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """obj.get_all()
-obj.fetch_data()
-obj.process_all()
-obj.auto_configure()
-"""
-        issues = gate.check_hallucinated_apis(content, "test.py")
-        assert len(issues) >= 4
-    
-    def test_correct_line_numbers_for_apis(self):
-        """Test that API call line numbers are correctly reported."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """x = 1
-result = obj.get_all()
-y = 2
-"""
-        issues = gate.check_hallucinated_apis(content, "test.py")
-        assert len(issues) >= 1
-        assert issues[0]['line'] == 2
-    
-    def test_empty_content_apis(self):
-        """Test handling of empty content for API checking."""
-        gate = script_under_test.AICodeQualityGate()
-        issues = gate.check_hallucinated_apis("", "test.py")
-        assert issues == []
-    
-    def test_legitimate_code_not_flagged(self):
-        """Test that legitimate code is not flagged."""
-        gate = script_under_test.AICodeQualityGate()
-        content = """result = obj.get(id)
-data = api.fetch(url)
-items = collection.all()
-"""
-        issues = gate.check_hallucinated_apis(content, "test.py")
-        assert len(issues) == 0
+    def test_consistent_camel_case(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "userName = 'test'; customerId = 1; orderTotal = 100"
+        score = gate.check_style_consistency(content, "test.py")
+        assert score == 0
 
 
-class TestIssueStructure:
-    """Test that issues are properly structured."""
+class TestCheckCommentDensity:
+    """Test comment density checking."""
     
-    def test_issue_contains_required_fields(self):
-        """Test that detected issues have all required fields."""
-        gate = script_under_test.AICodeQualityGate()
-        content = "import utils"
-        issues = gate.check_broken_imports(content, "test.py")
-        
-        assert len(issues) > 0
-        issue = issues[0]
-        assert 'file' in issue
-        assert 'line' in issue
-        assert 'type' in issue
-        assert 'message' in issue
+    def test_excessive_comments(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Comment 1\n# Comment 2\n# Comment 3\ncode = 1\ncode2 = 2"
+        score = gate.check_comment_density(content, "test.py")
+        assert score == 20
+        assert any("Excessive comments" in issue for issue in gate.issues)
     
-    def test_issue_field_types(self):
-        """Test that issue fields have correct types."""
-        gate = script_under_test.AICodeQualityGate()
-        content = "import utils"
-        issues = gate.check_broken_imports(content, "test.py")
-        
-        issue = issues[0]
-        assert isinstance(issue['file'], str)
-        assert isinstance(issue['line'], int)
-        assert isinstance(issue['type'], str)
-        assert isinstance(issue['message'], str)
+    def test_normal_comment_ratio(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Comment\ncode1 = 1\ncode2 = 2\ncode3 = 3\ncode4 = 4"
+        score = gate.check_comment_density(content, "test.py")
+        assert score == 0
     
-    def test_issue_line_numbers_positive(self):
-        """Test that line numbers are positive integers."""
-        gate = script_under_test.AICodeQualityGate()
-        content = "# Initialize x\nx = 1"
-        issues = gate.check_redundant_comments(content, "test.py")
-        
-        for issue in issues:
-            assert issue['line'] > 0
+    def test_no_code_lines(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Comment 1\n# Comment 2"
+        score = gate.check_comment_density(content, "test.py")
+        assert score == 0
+    
+    def test_different_comment_styles(self):
+        gate = script_under_test.CodeQualityGate()
+        content = "# Python comment\n// JS comment\n/* Block */\n* Star\ncode = 1"
+        score = gate.check_comment_density(content, "test.py")
+        assert score == 20
+
+
+class TestAnalyzeFile:
+    """Test file analysis."""
+    
+    @patch("builtins.open", new_callable=mock_open, read_data="data = []\n# TODO: implement this")
+    def test_analyze_file_success(self, mock_file):
+        gate = script_under_test.CodeQualityGate()
+        result = gate.analyze_file("test.py")
+        mock_file.assert_called_once_with("test.py", "r", encoding="utf-8")
+        assert isinstance(result, (int, type(None)))
+    
+    @patch("builtins.open", side_effect=FileNotFoundError)
+    def test_analyze_file_not_found(self, mock_file):
+        gate = script_under_test.CodeQualityGate()
+        result = gate.analyze_file("nonexistent.py")
+        assert result is None or isinstance(result, int)
+    
+    @patch("builtins.open", side_effect=UnicodeDecodeError("utf-8", b"", 0, 1, "invalid"))
+    def test_analyze_file_encoding_error(self, mock_file):
+        gate = script_under_test.CodeQualityGate()
+        result = gate.analyze_file("bad_encoding.py")
+        assert result is None or isinstance(result, int)
+    
+    @patch("builtins.open", new_callable=mock_open, read_data="clean_code = True")
+    def test_analyze_file_clean_code(self, mock_file):
+        gate = script_under_test.CodeQualityGate()
+        result = gate.analyze_file("clean.py")
+        assert len(gate.issues) == 0
+
+
+class TestModuleConstants:
+    """Test module-level constants."""
+    
+    def test_version_exists(self):
+        assert hasattr(script_under_test, "VERSION")
+        assert isinstance(script_under_test.VERSION, str)
+    
+    def test_generic_var_patterns_exists(self):
+        assert hasattr(script_under_test, "GENERIC_VAR_PATTERNS")
+        assert isinstance(script_under_test.GENERIC_VAR_PATTERNS, list)
+        assert len(script_under_test.GENERIC_VAR_PATTERNS) > 0
+    
+    def test_boilerplate_comments_exists(self):
+        assert hasattr(script_under_test, "BOILERPLATE_COMMENTS")
+        assert isinstance(script_under_test.BOILERPLATE_COMMENTS, list)
+        assert len(script_under_test.BOILERPLATE_COMMENTS) > 0
