@@ -1,74 +1,73 @@
 # AI Code Quality Gate CLI Tool
 
-**Stop AI-generated code slop before it pollutes your codebase.**
+**Stop AI-generated slop from polluting your codebase.**
 
-A lightweight CLI tool that analyzes PR diffs for telltale signs of AI-generated code: repetitive patterns, generic variable names, excessive commenting, and hallmark AI phrases.
+Automatic detection of low-quality AI-generated code before it reaches human reviewers.
 
 ## The Problem
 
-- Teams waste hours reviewing low-quality AI-generated PRs
-- AI code often passes linting but fails human quality standards
-- No automated way to flag suspicious AI contributions before review
-- Companies spend millions on "AI transformation" that delivers chatbot wrappers
+Teams are drowning in AI-generated PRs with:
+- Generic variable names (temp, data, result)
+- Repetitive code patterns
+- Obvious boilerplate comments
+- Missing context and poor structure
 
-## Features
+Reviewers waste hours on code that should never have been submitted.
 
-✅ Detects AI hallmark phrases ("helper function", "for future use", etc.)
-✅ Flags excessive commenting (AI loves to over-explain)
-✅ Identifies generic variable names (temp, data, result, handler)
-✅ Catches repetitive code patterns
-✅ Analyzes comment-to-code ratios
-✅ GitHub Action ready
-✅ Zero dependencies (stdlib only)
+## The Solution
+
+CLI tool that analyzes git diffs and scores AI slop risk in seconds.
 
 ## Installation
 
 ```bash
-curl -o ai-gate.py https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-gate.py
-chmod +x ai-gate.py
+pip install requests  # Only external dependency
+chmod +x ai_quality_gate.py
 ```
 
 ## Usage
 
 ```bash
-# Analyze a diff file
-git diff main | python3 ai-gate.py
+# Analyze current branch against main
+./ai_quality_gate.py main
 
-# With custom threshold
-git diff main | python3 ai-gate.py --threshold 60
-
-# JSON output for CI/CD
-git diff main | python3 ai-gate.py --json
+# Output: JSON with risk score and metrics
 ```
 
 ## GitHub Action
 
-Add to `.github/workflows/ai-gate.yml`:
+Add `.github/workflows/ai-quality-gate.yml`:
 
 ```yaml
-name: AI Code Quality Gate
+name: AI Quality Gate
 on: [pull_request]
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: |
-          curl -o ai-gate.py https://raw.githubusercontent.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool/main/ai-gate.py
-          git diff origin/main | python3 ai-gate.py --threshold 50
+        with:
+          fetch-depth: 0
+      - run: python ai_quality_gate.py origin/main
 ```
 
-## Risk Score Interpretation
+## Metrics
 
-- **0-30**: Low risk, likely human-written
-- **31-60**: Moderate risk, review carefully
-- **61-100**: High risk, probable AI generation
+- **Generic Variables**: Detects temp, data, result patterns
+- **Repetition**: Finds copy-pasted code blocks
+- **Comment Quality**: Flags obvious AI comments
+- **Structure**: Identifies poor nesting and formatting
+
+## Risk Levels
+
+- **HIGH (70+)**: Block merge, requires refactor
+- **MEDIUM (40-69)**: Review carefully
+- **LOW (<40)**: Likely human-written
 
 ## License
 
-MIT - Use freely, commercially or otherwise.
+MIT - Use freely in commercial projects
 
 ## Support
 
-Found a bug? Open an issue on GitHub.
-Want premium features? Check out the Pro version with ML-based detection.
+Issues: github.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool
