@@ -1,119 +1,92 @@
-# AI Code Quality Gate CLI Tool
+# 🛡️ AI Code Quality Gate
 
-🛡️ **Stop AI-generated code slop from polluting your codebase**
+**Stop AI-generated code slop from polluting your codebase.**
 
-A lightweight CLI tool that detects common patterns in low-quality AI-generated code contributions. Catch broken imports, hallucinated APIs, redundant comments, and syntax errors before they waste your team's review time.
+A heuristic-based CLI tool and GitHub Action that detects low-quality AI-generated code patterns in pull requests. Built for teams drowning in generic, context-free contributions that waste precious review time.
 
-## The Problem
+## 🎯 The Problem
 
-Teams are drowning in AI-generated PRs that:
-- ✗ Import non-existent modules
-- ✗ Call hallucinated API methods
-- ✗ Include redundant "AI-style" comments
-- ✗ Contain subtle syntax errors
-- ✗ Look plausible but don't compile
+OSS projects like Godot Engine receive hundreds of AI-generated PRs weekly:
+- Generic variable names (`foo`, `bar`, `temp`, `data`)
+- Hallmark AI phrases in comments ("Here's an implementation...", "Note that this...")
+- Repetitive code patterns with no context
+- Over-explained comments that add no value
+- Missing domain knowledge and project conventions
 
-Projects like Godot and AWS report being overwhelmed by these low-quality contributions that waste hours of review time.
+**Result:** Maintainers spend hours reviewing and rejecting low-effort contributions.
 
-## Features
+## ✨ Features
 
-✅ **Broken Import Detection** - Catches imports of commonly hallucinated modules
-✅ **Hallucinated API Detection** - Identifies calls to non-existent methods
-✅ **Redundant Comment Detection** - Flags AI-style obvious comments
-✅ **Basic Syntax Checking** - Catches unmatched brackets and common errors
-✅ **Multi-language Support** - Python, JavaScript, TypeScript, Java, Go
-✅ **CI/CD Ready** - Exit codes for pipeline integration
+- **Heuristic Detection Engine**: Identifies AI code patterns without ML overhead
+- **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Java, C/C++
+- **Configurable Thresholds**: Set your own quality gates
+- **CI/CD Ready**: Works as GitHub Action, GitLab CI, or standalone CLI
+- **Zero Dependencies**: Pure Python stdlib (+ requests for GitHub integration)
+- **JSON Output**: Easy integration with existing workflows
 
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/LuluFoxy-AI/ai-code-quality-gate-cli-tool.git
-cd ai-code-quality-gate-cli-tool
-
-# Make executable
-chmod +x ai_quality_gate.py
-```
-
-## Usage
+## 🚀 Quick Start
 
 ```bash
-# Scan a single file
-python ai_quality_gate.py path/to/file.py
+# Install
+pip install ai-code-quality-gate
 
-# Scan entire directory
-python ai_quality_gate.py ./src
+# Analyze files
+ai-quality-gate src/ --threshold 15
 
-# Use in CI/CD (exits with code 1 if issues found)
-python ai_quality_gate.py . || exit 1
+# Check specific files
+ai-quality-gate file1.py file2.js --json
+
+# Custom extensions
+ai-quality-gate . --extensions .py,.ts,.go
 ```
 
-## GitHub Action Integration
+## 📊 Detection Heuristics
 
-Add to `.github/workflows/quality-gate.yml`:
+| Pattern | Score | Description |
+|---------|-------|-------------|
+| AI comment phrases | 10 | "As an AI", "Here's a solution" |
+| Generic variables | 5 | Excessive foo/bar/temp usage |
+| Repetitive code | 8 | Duplicated blocks |
+| Verbose comments | 7 | >40% comment-to-code ratio |
+| Generic functions | 6 | process(), handle(), execute() |
+
+**Risk Levels:**
+- `CLEAN`: Score 0
+- `LOW`: Score 1-14
+- `MEDIUM`: Score 15-24
+- `HIGH`: Score 25+
+
+## 🔧 GitHub Action Usage
 
 ```yaml
 name: AI Code Quality Gate
 on: [pull_request]
+
 jobs:
   quality-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run AI Quality Gate
-        run: |
-          python ai_quality_gate.py .
+      - uses: LuluFoxy-AI/ai-code-quality-gate-action@v1
+        with:
+          threshold: 15
+          paths: 'src/'
 ```
 
-## Example Output
+## 💰 Pricing
 
-```
-🔍 AI Code Quality Gate - Scanning for AI-generated code issues...
+- **OSS Projects**: Free forever
+- **Private Repos**: $29-99/mo per organization
+- **Enterprise Self-Hosted**: $5k-15k/year with SLA
 
-📊 Scan Complete
-Files scanned: 15
-Total issues found: 7
+## 📝 License
 
-Issues by type:
-  - broken_import: 3
-  - hallucinated_api: 2
-  - redundant_comment: 2
+MIT License - Free for open source projects
 
-⚠️  Detailed Issues:
+## 🤝 Contributing
 
-  src/utils.py:5 [broken_import]
-    Suspicious generic import: from helpers import process_data
-
-  src/api.py:23 [hallucinated_api]
-    fetch_data() is generic AI invention: result = client.fetch_data()
-```
-
-## Roadmap
-
-- [ ] GitHub Action marketplace listing
-- [ ] Custom rule configuration
-- [ ] Machine learning-based detection
-- [ ] IDE plugins (VSCode, JetBrains)
-- [ ] Team analytics dashboard
-
-## Pro Version
-
-Upgrade to Pro for:
-- Advanced AI pattern detection
-- Custom rule engine
-- Team analytics
-- Priority support
-
-[Get Pro →](https://gumroad.com/l/ai-quality-gate-pro)
-
-## License
-
-MIT License - Free for personal and commercial use
-
-## Contributing
-
-PRs welcome! Please ensure your code passes the quality gate 😉
+Contributions welcome! Please ensure your PR passes the quality gate 😉
 
 ---
 
-**Stop wasting time on AI slop. Start using AI Code Quality Gate today.**
+**Built by developers, for developers.** Stop the AI slop. Ship quality code.
